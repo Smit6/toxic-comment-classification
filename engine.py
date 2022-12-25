@@ -7,6 +7,9 @@ import os
 
 from transformers import BertTokenizerFast as BertTokenizer, get_linear_schedule_with_warmup, AdamW
 
+# from pytorch_lightning.metrics.functional import auroc, accuracy
+from torchmetrics import AUROC, Accuracy
+
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, roc_curve
 from sklearn.metrics import classification_report
@@ -115,7 +118,6 @@ if __name__ == '__main__':
   # Select a device
   torch.cuda.empty_cache()
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-  # device = torch.device('cpu')
   print('Device:', device)
 
   # Create the model
@@ -130,37 +132,49 @@ if __name__ == '__main__':
   train(model, train_data_loader, validation_data_loader, optimizer, device, scheduler, EPOCHS)
 
   # Load the data for testing
-  test_df = pd.read_csv('test.csv')
+  test_df = load_df('labeled_test.csv')
   # Create the test dataset
-  test_dataset = TestDataset(test_df, tokenizer, 256)
+  test_dataset = ToxicDataset(validation_df, tokenizer, 256)
   # Create the test data loader
   test_data_loader = DataLoader(test_dataset, batch_size=16, num_workers=6)
 
   # Get the predictions
-  model = torch.load('best_model_state.bin')
+  model = ToxicClassifier(6).to(device)
+  model.load_state_dict(torch.load('best_model_state.bin'))
   y_pred, y_test = get_predictions(model, test_data_loader, device)
-  y_pred = y_pred.numpy()
-
 
   # Get Accuracy
-  print('Accuracy: ', accuracy_score(y_test, y_pred.round()))
+  accuracy = Accuracy(task='multilabel', threshold=0.5, num_labels=6)
+  print('Accuracy: ', accuracy(y_test, y_pred))
+
+  # auroc = AUROC(task='multilabel', num_labels=6)
+  # # auroc for each class
+  # for i, name in enumerate(df.columns[2:]):
+  #   tag_auroc = auroc(y_pred[:, i], y_test[:, i])
+  #   print(f'{name} AUROC: {tag_auroc}')
 
 
-  # Get the ROC AUC score
-  auc = roc_auc_score(y_test, y_pred.round())
-  print('ROC AUC score: ', auc)
-  # Plot the ROC AUC curve
-  fpr, tpr, _ = roc_curve(y_test, y_pred)
-  plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % auc)
-  plt.xlabel('False Positive Rate')
-  plt.ylabel('True Positive Rate')
-  plt.title('AUC-ROC curve')
-  plt.legend(loc='lower right')
-  plt.show()
-  plt.clf()
+  y_pred = y_pred.numpy()
+  y_test = y_test.numpy()
+
+  upper, lower = 1, 0
+  y_pred = np.where(y_pred > 0.5, upper, lower)
+
+  # # Get the ROC AUC score
+  # auc = roc_auc_score(y_test, y_pred)
+  # print('ROC AUC score: ', auc)
+  # # Plot the ROC AUC curve
+  # fpr, tpr, _ = roc_curve(y_test, y_pred)
+  # plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % auc)
+  # plt.xlabel('False Positive Rate')
+  # plt.ylabel('True Positive Rate')
+  # plt.title('AUC-ROC curve')
+  # plt.legend(loc='lower right')
+  # plt.show()
+  # plt.clf()
 
   # Get the classification report
-  print(classification_report(y_test, y_pred.round(), target_names=df.columns[2:]))
+  print(classification_report(y_test, y_pred, target_names=df.columns[2:]))
 
   # Plot the confusion matrix
   cm = confusion_matrix(y_test, y_pred)
