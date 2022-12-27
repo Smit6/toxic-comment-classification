@@ -6,7 +6,6 @@ import torch
 class ToxicClassifier(torch.nn.Module):
   """
   The toxic classifier
-
   Parameters
   ----------
   n_classes: int

@@ -5,6 +5,8 @@ from collections import defaultdict
 
 import torch
 
+import time
+
 
 def train_epoch(model, data_loader, optimizer, device, scheduler=None):
   """
@@ -33,11 +35,15 @@ def train_epoch(model, data_loader, optimizer, device, scheduler=None):
   model = model.train()
   losses = []
 
+  start = time.time()
+
   for d in data_loader:
     input_ids = d['input_ids'].to(device)
     attention_mask = d['attention_mask'].to(device)
     labels = d['labels'].to(device)
 
+    optimizer.zero_grad()
+    
     outputs = model(input_ids=input_ids, attention_mask=attention_mask)
     outputs = torch.sigmoid(outputs)
     
@@ -46,10 +52,10 @@ def train_epoch(model, data_loader, optimizer, device, scheduler=None):
     loss.backward()
     
     optimizer.step()
-    optimizer.zero_grad()
-    
-    if scheduler is not None:
-      scheduler.step()
+    scheduler.step()
+  
+  end = time.time()
+  print(f'Training time: {end - start}')
 
   return np.mean(losses), model
 
@@ -198,7 +204,7 @@ def get_predictions(model, data_loader, device):
       attention_mask = d['attention_mask'].to(device)
       outputs = model(input_ids=input_ids, attention_mask=attention_mask)
       outputs = torch.sigmoid(outputs)
-      preds = torch.round(outputs).float()
+      preds = torch.round(outputs)
       predictions.extend(preds)
       real_values.extend(d['labels'])
   predictions = torch.stack(predictions).cpu()
