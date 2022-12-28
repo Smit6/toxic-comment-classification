@@ -156,7 +156,7 @@ def train(model, train_data_loader, validation_data_loader, optimizer, device, s
 
     if val_loss < best_loss:
       torch.save(model.state_dict(), 'best_model_state.bin')
-      best_accuracy = val_loss
+      best_loss = val_loss
 
 
   plt.plot(history['train_loss'], label='train loss')
@@ -210,3 +210,92 @@ def get_predictions(model, data_loader, device):
   predictions = torch.stack(predictions).cpu()
   real_values = torch.stack(real_values).cpu()
   return predictions, real_values
+
+
+def train_validate(model, train_data_loader, validation_data_loader, optimizer, device, scheduler=None, EPOCHS=5):
+  """
+  Trains and validates the model
+
+  Parameters
+  ----------
+  model: ToxicClassifier
+    The model to train
+  train_data_loader: DataLoader
+    The data loader to use for training
+  validation_data_loader: DataLoader
+    The data loader to use for validation
+  optimizer: torch.optim.Adam
+    The optimizer to use
+  device: torch.device
+    The device to use
+  scheduler: torch.optim.lr_scheduler
+    The scheduler to use
+  EPOCHS: int
+    The number of epochs to train for
+
+  Returns
+  -------
+  history: dict
+    The history of the training
+  predictions: torch.Tensor
+    The predictions of the model
+  real_values: torch.Tensor
+    The real values of the model
+  """
+  criterion = torch.nn.BCELoss().to(device)
+
+  for epoch in range(EPOCHS):
+    print(f'Epoch {epoch + 1}/{EPOCHS}')
+    print('-' * 10)
+
+    # Train the model
+    model.train()
+    losses = []
+
+    start = time.time()
+
+    for step, d in enumerate(train_data_loader):
+      if step % 1000 == 0:
+        elapsed = time.time() - start
+        print('  Batch {:>5,}  of  {:>5,}.    Elapsed: {:}. Loss: {:.5f}'.format(step, len(train_data_loader), elapsed, np.mean(losses)))
+      input_ids = d['input_ids'].to(device)
+      attention_mask = d['attention_mask'].to(device)
+      labels = d['labels'].to(device)
+
+      model.zero_grad()
+
+      outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+      outputs = torch.sigmoid(outputs)
+
+      loss = criterion(outputs, labels)
+      losses.append(loss.item())
+      loss.backward()
+
+      torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+      optimizer.step()
+      scheduler.step()
+
+    print('=' * 10)
+    print(' Epoch: {:>3,}  Train Loss: {:.5f}'.format(epoch, np.mean(losses)))
+
+    # Validate the model
+    model = model.eval()
+    losses = []
+
+    start = time.time()
+    with torch.no_grad():
+      for d in validation_data_loader:
+        input_ids = d['input_ids'].to(device)
+        attention_mask = d['attention_mask'].to(device)
+        labels = d['labels'].to(device)
+
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        outputs = torch.sigmoid(outputs)
+
+        loss = torch.nn.BCELoss()(outputs, labels)
+        losses.append(loss.item())
+    
+    print('  Validation Loss: {:.5f}'.format(np.mean(losses)))
+    print('=' * 10)
+
