@@ -3,5 +3,7 @@ best_model_state*
 __pycache__
 y_pred.csv
 y_test.csv
-train_eval_lightning.py
 test.ipynb
+lightning_logs*
+events*
+hparams.yaml
